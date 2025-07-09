@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>HSK Vocabulary Reviewer with Copy & Search Toolbar</title>
+<style>
+  body {
+    font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+    max-width: 700px;
+    margin: 2rem auto;
+    padding: 1rem 2rem 3rem 2rem;
+    background: #f0f4f8;
+    border-radius: 10px;
+    box-shadow: 0 8px 16px rgb(0 0 0 / 0.1);
+  }
+  h1 {
+    text-align: center;
+    font-size: 2.4rem;
+    color: #004a99;
+    margin-bottom: 1.5rem;
+    user-select: none;
+  }
+
+  #fieldSelector {
+    background: white;
+    padding: 1rem 1.2rem;
+    border-radius: 8px;
+    box-shadow: 0 3px 8px rgb(0 0 0 / 0.07);
+    margin-bottom: 1.8rem;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    justify-content: center;
+    user-select: none;
+  }
+  #fieldSelector label {
+    font-size: 1.1rem;
+    color: #333;
+    cursor: pointer;
+  }
+  #fieldSelector input[type="checkbox"] {
+    margin-right: 0.4rem;
+    cursor: pointer;
+    transform: scale(1.3);
+    vertical-align: middle;
+  }
+
+  #fileInput {
+    display: block;
+    margin: 0 auto 1.5rem auto;
+    font-size: 1.2rem;
+    cursor: pointer;
+  }
+
+  #info {
+    text-align: center;
+    margin-bottom: 1rem;
+    font-style: italic;
+    font-size: 1.1rem;
+    color: #666;
+  }
+
+  #wordCard {
+    background: white;
+    padding: 1.8rem 2rem;
+    border-radius: 10px;
+    box-shadow: 0 5px 15px rgb(0 0 0 / 0.1);
+    min-height: 280px;
+    font-size: 1.3rem;
+    line-height: 1.5;
+    user-select: text; /* enable selection inside */
+    position: relative;
+  }
+  .field {
+    margin-top: 1.2rem;
+    cursor: default;
+    /* enable text selection */
+    user-select: text;
+  }
+  .field .title {
+    font-weight: 700;
+    color: #004a99;
+    margin-right: 0.6rem;
+    user-select: text;
+  }
+  .hidden-text {
+    background-color: #d9e6f7;
+    color: transparent;
+    border-radius: 5px;
+    padding: 4px 10px;
+    cursor: pointer;
+    transition: color 0.4s ease, background-color 0.4s ease;
+    display: inline-block;
+    max-width: 100%;
+    word-break: break-word;
+    user-select: text;
+  }
+  .hidden-text.visible {
+    color: #1a1a1a;
+    user-select: text;
+    background-color: #f5faff;
+  }
+
+  #controls {
+    text-align: center;
+    margin-top: 2rem;
+  }
+  button {
+    background: #007acc;
+    color: white;
+    border: none;
+    padding: 0.6rem 1.8rem;
+    font-size: 1.2rem;
+    margin: 0 0.6rem;
+    border-radius: 7px;
+    cursor: pointer;
+    box-shadow: 0 3px 6px rgb(0 122 204 / 0.5);
+    user-select: none;
+    transition: background-color 0.3s ease;
+  }
+  button:hover:not(:disabled) {
+    background: #005fa3;
+  }
+  button:disabled {
+    background: #bbb;
+    cursor: not-allowed;
+    box-shadow: none;
+  }
+  /* Focus outlines */
+  button:focus,
+  #fileInput:focus,
+  #fieldSelector input[type="checkbox"]:focus {
+    outline: 3px solid #007acc;
+    outline-offset: 2px;
+  }
+
+  /* Floating toolbar */
+  #selectionToolbar {
+    position: fixed;
+    background: #007acc;
+    color: white;
+    border-radius: 6px;
+    box-shadow: 0 3px 8px rgba(0,0,0,0.2);
+    padding: 6px 10px;
+    display: flex;
+    gap: 10px;
+    font-size: 1rem;
+    z-index: 9999;
+    user-select: none;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease;
+    transform: translate(-50%, -100%);
+    /* margin-top: -15px;  Additional space above selection */
+  }
+  #selectionToolbar.visible {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  #selectionToolbar button {
+    background: white;
+    color: #007acc;
+    font-weight: 600;
+    padding: 4px 10px;
+    border-radius: 4px;
+    box-shadow: none;
+    user-select: none;
+    font-size: 0.9rem;
+  }
+  #selectionToolbar button:hover {
+    background: #d0e4fb;
+  }
+</style>
+</head>
+<body>
+
+<h1>HSK Vocabulary Reviewer</h1>
+
+<input type="file" id="fileInput" accept=".xlsx, .xls" />
+
+<div id="info">Upload your Excel file to start reviewing.</div>
+
+<div id="fieldSelector" style="display:none;">
+  <strong>Click to toggle which fields are hidden by default:</strong>
+</div>
+
+<div id="wordCard" style="display:none;"></div>
+
+<div id="controls" style="display:none;">
+  <button id="prevBtn" disabled aria-label="Previous word">Previous</button>
+  <button id="nextBtn" disabled aria-label="Next word">Next</button>
+</div>
+
+<!-- Floating selection toolbar -->
+<div id="selectionToolbar" role="toolbar" aria-label="Selection actions">
+  <button id="copyBtn" type="button" aria-label="Copy selected text">Copy</button>
+  <button id="searchBtn" type="button" aria-label="Search selected text">Search</button>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script>
+  const fileInput = document.getElementById('fileInput');
+  const wordCard = document.getElementById('wordCard');
+  const controls = document.getElementById('controls');
+  const info = document.getElementById('info');
+  const fieldSelector = document.getElementById('fieldSelector');
+
+  const prevBtn = document.getElementById('prevBtn');
+  const nextBtn = document.getElementById('nextBtn');
+
+  const selectionToolbar = document.getElementById('selectionToolbar');
+  const copyBtn = document.getElementById('copyBtn');
+  const searchBtn = document.getElementById('searchBtn');
+
+  let vocabList = [];
+  let headers = [];
+  let currentIndex = 0;
+
+  let hiddenFields = new Set();
+
+  function isSensitiveField(title) {
+    return /pinyin|english|meaning/i.test(title);
+  }
+
+  function createFieldSelector() {
+    fieldSelector.innerHTML = '<strong>Click to toggle which fields are hidden by default:</strong>';
+    hiddenFields.clear();
+
+    headers.forEach((header) => {
+      const label = document.createElement('label');
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+
+      checkbox.checked = isSensitiveField(header);
+      if (checkbox.checked) hiddenFields.add(header);
+
+      checkbox.dataset.header = header;
+      checkbox.addEventListener('change', () => {
+        if (checkbox.checked) {
+          hiddenFields.add(header);
+        } else {
+          hiddenFields.delete(header);
+        }
+        showWord(currentIndex);
+      });
+      label.appendChild(checkbox);
+      label.appendChild(document.createTextNode(header));
+      fieldSelector.appendChild(label);
+    });
+    fieldSelector.style.display = 'flex';
+  }
+
+  function createFieldElement(title, content) {
+    const fieldDiv = document.createElement('div');
+    fieldDiv.className = 'field';
+
+    const titleSpan = document.createElement('span');
+    titleSpan.className = 'title';
+    titleSpan.textContent = title + ':';
+
+    const contentSpan = document.createElement('span');
+    const hideThis = hiddenFields.has(title) && content;
+
+    if (hideThis) {
+      contentSpan.className = 'hidden-text';
+      contentSpan.textContent = content;
+      contentSpan.title = 'Click to show/hide';
+      contentSpan.tabIndex = 0;
+
+      contentSpan.addEventListener('click', () => {
+        contentSpan.classList.toggle('visible');
+      });
+      contentSpan.addEventListener('keydown', e => {
+        if(e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          contentSpan.classList.toggle('visible');
+        }
+      });
+    } else {
+      contentSpan.textContent = content || '';
+    }
+
+    fieldDiv.appendChild(titleSpan);
+    fieldDiv.appendChild(contentSpan);
+    return fieldDiv;
+  }
+
+  function showWord(index) {
+    if (vocabList.length === 0) return;
+    const entry = vocabList[index];
+    wordCard.innerHTML = '';
+
+    for (let i = 0; i < headers.length; i++) {
+      wordCard.appendChild(createFieldElement(headers[i], entry[i] || ''));
+    }
+
+    prevBtn.disabled = index === 0;
+    nextBtn.disabled = index === vocabList.length - 1;
+
+    info.textContent = `Showing word ${index + 1} of ${vocabList.length}`;
+  }
+
+  prevBtn.addEventListener('click', () => {
+    if (currentIndex > 0) {
+      currentIndex--;
+      showWord(currentIndex);
+    }
+  });
+
+  nextBtn.addEventListener('click', () => {
+    if (currentIndex < vocabList.length - 1) {
+      currentIndex++;
+      showWord(currentIndex);
+    }
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (controls.style.display === 'none') return;
+    if (e.target.tagName === 'INPUT' || e.target.isContentEditable) return;
+
+    if (e.key === 'ArrowLeft') {
+      if (!prevBtn.disabled) {
+        currentIndex--;
+        showWord(currentIndex);
+      }
+    } else if (e.key === 'ArrowRight') {
+      if (!nextBtn.disabled) {
+        currentIndex++;
+        showWord(currentIndex);
+      }
+    }
+  });
+
+  // Show/hide selection toolbar on text selection inside wordCard
+  wordCard.addEventListener('mouseup', () => {
+    setTimeout(updateSelectionToolbar, 10);
+  });
+  wordCard.addEventListener('keyup', () => {
+    setTimeout(updateSelectionToolbar, 10);
+  });
+
+  document.addEventListener('mousedown', (e) => {
+    if (!wordCard.contains(e.target) && !selectionToolbar.contains(e.target)) {
+      hideSelectionToolbar();
+    }
+  });
+
+  function updateSelectionToolbar() {
+    const selection = window.getSelection();
+    if (!selection.rangeCount) {
+      hideSelectionToolbar();
+      return;
+    }
+    const selectedText = selection.toString().trim();
+    if (!selectedText) {
+      hideSelectionToolbar();
+      return;
+    }
+
+    // Check if selection is inside wordCard
+    const range = selection.getRangeAt(0);
+    if (!wordCard.contains(range.commonAncestorContainer)) {
+      hideSelectionToolbar();
+      return;
+    }
+
+    // Get bounding rect for the selection
+    const rect = range.getBoundingClientRect();
+    if (rect.width === 0 && rect.height === 0) {
+      hideSelectionToolbar();
+      return;
+    }
+
+    // Position toolbar closer to the selection (5px above instead of 15px)
+    const top = rect.top - 5; // Reduced from 15px to 5px
+    const left = rect.left + (rect.width / 2);
+
+    selectionToolbar.style.top = top + 'px';
+    selectionToolbar.style.left = left + 'px';
+    selectionToolbar.classList.add('visible');
+  }
+
+  function hideSelectionToolbar() {
+    selectionToolbar.classList.remove('visible');
+  }
+
+  copyBtn.addEventListener('click', () => {
+    const selection = window.getSelection();
+    const text = selection.toString();
+    if (text.length === 0) return;
+
+    navigator.clipboard.writeText(text).then(() => {
+      copyBtn.textContent = 'Copied!';
+      setTimeout(() => copyBtn.textContent = 'Copy', 1200);
+      window.getSelection().removeAllRanges();
+      hideSelectionToolbar();
+    });
+  });
+
+  searchBtn.addEventListener('click', () => {
+    const selection = window.getSelection();
+    const text = selection.toString().trim();
+    if (text.length === 0) return;
+
+    // Detect if text contains Chinese characters
+    const isChinese = /[\u3400-\u9FBF]/.test(text);
+
+    // Google Translate URL template:
+    // If Chinese detected: zh -> en
+    // Else: en -> zh-CN
+    const baseUrl = 'https://translate.google.com/?sl=';
+    const targetUrl = '&tl=';
+    const queryUrl = '&text=' + encodeURIComponent(text) + '&op=translate';
+
+    const url = isChinese
+      ? baseUrl + 'zh-CN' + targetUrl + 'en' + queryUrl
+      : baseUrl + 'en' + targetUrl + 'zh-CN' + queryUrl;
+
+    window.open(url, '_blank');
+  });
+
+  fileInput.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      const data = new Uint8Array(evt.target.result);
+      const workbook = XLSX.read(data, { type: 'array' });
+
+      const firstSheetName = workbook.SheetNames[0];
+      const worksheet = workbook.Sheets[firstSheetName];
+
+      const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+
+      if (jsonData.length < 2) {
+        info.textContent = "File must have at least one header row and one data row.";
+        wordCard.style.display = 'none';
+        controls.style.display = 'none';
+        fieldSelector.style.display = 'none';
+        return;
+      }
+
+      headers = jsonData[0];
+      vocabList = jsonData.slice(1).filter(row => row.length > 0);
+
+      if (vocabList.length === 0) {
+        info.textContent = "No valid data found in file.";
+        wordCard.style.display = 'none';
+        controls.style.display = 'none';
+        fieldSelector.style.display = 'none';
+        return;
+      }
+
+      currentIndex = 0;
+      createFieldSelector();
+      wordCard.style.display = 'block';
+      controls.style.display = 'block';
+      showWord(currentIndex);
+      info.textContent = '';
+      hideSelectionToolbar();
+    };
+
+    reader.readAsArrayBuffer(file);
+  });
+</script>
+
+</body>
+</html>
